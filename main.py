@@ -1,4 +1,4 @@
-from fastapi import FastAPI, File, UploadFile
+from fastapi import FastAPI, File, UploadFile, HTTPException
 from fastapi.responses import FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 import pandas as pd
@@ -11,7 +11,7 @@ app = FastAPI()
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["https://excel-joiner-frontend.onrender.com"],  # Set to frontend URL in production
+    allow_origins=["https://excel-joiner-frontend.onrender.com"],  # Your frontend URL
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -50,16 +50,26 @@ def suggest_join_columns(df1, df2):
 
 @app.post("/join")
 async def join_excels(file1: UploadFile = File(...), file2: UploadFile = File(...)):
-    df1 = pd.read_excel(file1.file)
-    df2 = pd.read_excel(file2.file)
+    try:
+        df1 = pd.read_excel(file1.file)
+        df2 = pd.read_excel(file2.file)
 
-    suggestions = suggest_join_columns(df1, df2)
-    best_col1, best_col2, _ = suggestions[0]
+        suggestions = suggest_join_columns(df1, df2)
+        print("🔍 Join suggestions:", suggestions)
 
-    joined_df = pd.merge(df1, df2, left_on=best_col1, right_on=best_col2, how='inner')
+        if not suggestions:
+            raise HTTPException(status_code=400, detail="No joinable columns found.")
 
-    temp_dir = tempfile.mkdtemp()
-    output_path = os.path.join(temp_dir, "joined_output.xlsx")
-    joined_df.to_excel(output_path, index=False)
+        best_col1, best_col2, _ = suggestions[0]
 
-    return FileResponse(output_path, filename="joined_output.xlsx", media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+        joined_df = pd.merge(df1, df2, left_on=best_col1, right_on=best_col2, how='inner')
+
+        temp_dir = tempfile.mkdtemp()
+        output_path = os.path.join(temp_dir, "joined_output.xlsx")
+        joined_df.to_excel(output_path, index=False)
+
+        return FileResponse(output_path, filename="joined_output.xlsx", media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+
+    except Exception as e:
+        print(f"❌ Error during join: {e}")
+        raise HTTPException(status_code=500, detail="Failed to process files.")
