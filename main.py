@@ -11,7 +11,7 @@ app = FastAPI()
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Set to frontend URL in production
+    allow_origins=["https://excel-joiner-frontend.onrender.com"],  # Set to frontend URL in production
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
