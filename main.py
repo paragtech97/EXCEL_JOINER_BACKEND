@@ -9,14 +9,16 @@ import os
 
 app = FastAPI()
 
+# ✅ Allow proper CORS for frontend
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["https://excel-joiner-frontend.onrender.com"],  # Your frontend URL
+    allow_origins=["https://excel-joiner-frontend.onrender.com"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
+# 🔍 Utility functions
 def compute_value_overlap(col1, col2):
     set1 = set(col1.dropna().astype(str))
     set2 = set(col2.dropna().astype(str))
@@ -51,9 +53,14 @@ def suggest_join_columns(df1, df2):
 @app.post("/join")
 async def join_excels(file1: UploadFile = File(...), file2: UploadFile = File(...)):
     try:
-        df1 = pd.read_excel(file1.file)
-        df2 = pd.read_excel(file2.file)
+        # ✅ Read files
+        df1 = pd.read_excel(file1.file, engine='openpyxl')
+        df2 = pd.read_excel(file2.file, engine='openpyxl')
 
+        if df1.empty or df2.empty:
+            raise HTTPException(status_code=400, detail="One of the files is empty.")
+
+        # 🔍 Suggest join columns
         suggestions = suggest_join_columns(df1, df2)
         print("🔍 Join suggestions:", suggestions)
 
@@ -62,14 +69,26 @@ async def join_excels(file1: UploadFile = File(...), file2: UploadFile = File(..
 
         best_col1, best_col2, _ = suggestions[0]
 
+        if best_col1 not in df1.columns or best_col2 not in df2.columns:
+            raise HTTPException(status_code=400, detail="Matching columns not found in both files.")
+
+        # ✅ Join the dataframes
         joined_df = pd.merge(df1, df2, left_on=best_col1, right_on=best_col2, how='inner')
 
+        if joined_df.empty:
+            raise HTTPException(status_code=400, detail="No matching rows found after join.")
+
+        # ✅ Save to temp file
         temp_dir = tempfile.mkdtemp()
         output_path = os.path.join(temp_dir, "joined_output.xlsx")
         joined_df.to_excel(output_path, index=False)
 
-        return FileResponse(output_path, filename="joined_output.xlsx", media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+        return FileResponse(
+            output_path,
+            filename="joined_output.xlsx",
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        )
 
     except Exception as e:
         print(f"❌ Error during join: {e}")
-        raise HTTPException(status_code=500, detail="Failed to process files.")
+        raise HTTPException(status_code=500, detail=f"Failed to process files: {str(e)}")
